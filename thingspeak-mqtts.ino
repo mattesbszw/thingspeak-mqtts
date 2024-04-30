@@ -1,15 +1,20 @@
 #include "tscert.h"
 
 #include <DHT.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 #include <WiFi.h>
 #include <PubSubClient.h>                 
 
 #define DHT_PIN 4
+#define ONE_WIRE_BUS 16
 #define DHTTYPE DHT11
 
 
 DHT dht(DHT_PIN, DHTTYPE);
 
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
 
 // WLAN-Zugangsdaten
 const char* ssid = "CPSLABOR";
@@ -21,7 +26,7 @@ PubSubClient mqttClient(wifiClient);           //MQTT-Client erzeugen
 const char* MQTT_SERVER = "mqtt3.thingspeak.com";
 const long MQTT_PORT = 1883;
 
-// Thingspeak-MQTT-Client-Daten anpassen
+//Thingspeak-MQTT-Client-Daten anpassen
 
 const long THINGSPEAK_CHANNEL = 0;
 const char MQTT_USERNAME[] = "YOURUSERNAMEHERE";            
@@ -33,6 +38,7 @@ void setup(void){
   
   Serial.begin(115200);
   dht.begin();              // init DHT sensor
+  sensors.begin();          // init DS18B20 sensors on OneWire bus
   
   connectWiFi();
 
@@ -61,23 +67,21 @@ void connectWiFi(){
 
 void loop(void){ 
 
-  // Temperatur auslesen
-  float hTmp = dht.readTemperature();
-  String dhtTemperature = "0";
-  if (!isnan(hTmp)) {
-    dhtTemperature = hTmp;
+  // Temperatur des DS18B20 auslesen
+  sensors.requestTemperatures();
+  float tmpD = sensors.getTempCByIndex(0);                  
+  String tmpDS = String(tmpD);
+  Serial.print("Sensor DS (*C): ");
+  Serial.println(tmpDS); 
+  
+  //Temperatur des DHT11 auslesen
+  float tmp = dht.readTemperature();
+  String tmpDHT = "0";
+  if (!isnan(tmp)) {
+    tmpDHT = tmp;
   }
-  Serial.print("Sensor (*C): "); 
-  Serial.println(dhtTemperature);
- 
-  // Luftfeuchtigkeit auslesen
-  float hHum = dht.readHumidity();
-  String dhtHumidity = "0";
-  if (!isnan(hHum)) {
-    dhtHumidity = hHum;
-  }
-  Serial.print("Sensor (%): "); 
-  Serial.println(dhtHumidity);
+  Serial.print("Sensor DHT (*C): ");
+  Serial.println(tmpDHT);
 
   //verbinden, falls noch nicht geschehen
   if (WiFi.status() != WL_CONNECTED) {
@@ -91,7 +95,7 @@ void loop(void){
   mqttClient.loop(); 
   
   // Update ThingSpeak channel periodically. The update results in the message to the subscriber.
-  mqttPublish(THINGSPEAK_CHANNEL, (String("field1=" + String(dhtTemperature) + "&field2=" + String(dhtHumidity) )));
+  mqttPublish(THINGSPEAK_CHANNEL, (String("field1=" + String(tmp) + "&field2=" + String(tmpD) )));
   
   delay(30000);
 }
